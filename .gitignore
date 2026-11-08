@@ -1,0 +1,57 @@
+# Frontend dependencies and generated files
+node_modules/
+web/dist/
+web/.vite/
+*.tsbuildinfo
+.pnpm-store/
+
+# Go binaries, coverage and profiles
+backend/cloud
+backend/bin/
+*.test
+coverage*.out
+*.prof
+
+# Local runtime data, caches and generated artifacts
+.local/
+backend/data/
+artifacts/
+.sites-runtime/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
+*.log
+
+# Local environment and credentials; keep the documented empty template
+.env
+.env.*
+!.env.example
+.npmrc
+.netrc
+.git-credentials
+.ssh/
+.aws/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editor, agent-local and operating system files
+.idea/
+.vscode/
+.codex/
+.agents/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

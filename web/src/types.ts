@@ -1,0 +1,14 @@
+export type User = {id:number;email:string;name:string;role:'admin'|'user';status:string;balance:number;created_at:string};
+export type Plan = {id:number;name:string;description:string;traffic_gb:number;device_limit:number;speed_mbps:number;monthly_price:number;quarterly_price:number;yearly_price:number;onetime_price:number;kind:'recurring'|'onetime';recommended:boolean;active:boolean;sort_order:number};
+export type Node = {id:number;name:string;region:string;flag:string;protocol:string;status:string;multiplier:number;tags:string;host?:string;port?:number;tls?:boolean;server_name?:string;active:boolean;sort_order:number;updated_at:string};
+export type Subscription = {id:number;user_id:number;user_email?:string;plan_id:number;plan_name:string;traffic_limit:number;traffic_used:number;device_limit:number;speed_mbps:number;status:string;expires_at:string;reset_at:string};
+export type Order = {id:number;order_no:string;user_id:number;user_email?:string;plan_id:number;plan_name:string;period:string;amount:number;status:string;created_at:string;paid_at?:string};
+export type Article = {id:number;title:string;category:string;kind:'doc'|'announcement'|'notice';body:string;published:boolean;updated_at:string};
+export type TrafficRecord = {id:number;user_id:number;user_email?:string;date:string;upload_gb:number;download_gb:number;multiplier:number;total_gb:number;node_name?:string};
+export type TicketMessage = {id:number;role:string;message:string;created_at:string};
+export type Ticket = {id:number;user_id:number;user_email?:string;subject:string;priority:string;status:string;created_at:string;updated_at:string;messages?:TicketMessage[]};
+export type Commission = {id:number;user_id:number;user_email?:string;order_no:string;amount:number;status:string;created_at:string};
+export type Withdrawal = {id:number;user_id:number;user_email?:string;amount:number;account:string;status:string;created_at:string};
+export type Audit = {id:number;actor:string;action:string;target:string;created_at:string};
+export type Ledger = {id:number;user_id:number;user_email?:string;amount:number;balance_after:number;kind:string;description:string;created_at:string};
+export type SiteSettings = {site_name:string;site_description:string;contact_email:string;demo:boolean};

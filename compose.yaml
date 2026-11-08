@@ -1,0 +1,17 @@
+services:
+  cloud:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?请配置站点完整的 HTTPS 地址}
+      ALLOWED_ORIGINS: ${PUBLIC_URL:?请配置站点完整的 HTTPS 地址}
+      COOKIE_SECURE: "1"
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    volumes:
+      - cloud-data:/data
+
+volumes:
+  cloud-data:
