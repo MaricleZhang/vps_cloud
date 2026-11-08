@@ -70,8 +70,19 @@ func num(m M, k string) float64 {
 	}
 	return 0
 }
-func integer(m M, k string) int64 { return int64(num(m, k)) }
-func boolean(m M, k string) bool  { v, _ := m[k].(bool); return v }
+func integer(m M, k string) int64 {
+	switch v := m[k].(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case json.Number:
+		n, _ := v.Int64()
+		return n
+	}
+	return int64(num(m, k))
+}
+func boolean(m M, k string) bool { v, _ := m[k].(bool); return v }
 func randomToken(n int) string {
 	b := make([]byte, n)
 	if _, e := rand.Read(b); e != nil {
@@ -136,6 +147,10 @@ func openApp(path string, demo bool) (*App, error) {
 		db.Close()
 		return nil, e
 	}
+	if e = a.initTraffic(); e != nil {
+		db.Close()
+		return nil, e
+	}
 	defaults := map[string]string{"site_name": "NiceCloud", "site_description": "订阅与节点服务平台", "contact_email": "support@example.test", "invite_rate": "0.10", "registration_enabled": "true", "payment_status": "not_connected", "node_sync_status": "not_connected", "speed_enforcement": "not_connected", "device_enforcement": "not_connected"}
 	for k, v := range defaults {
 		if _, e = db.Exec("INSERT OR IGNORE INTO settings(key,value)VALUES(?,?)", k, v); e != nil {
@@ -194,6 +209,14 @@ func (a *App) createUser(q queryer, email, password, name, role string, inviter 
 	return getUser(q, id)
 }
 func put(q queryer, kind string, uid int64, m M) (M, error) {
+	if kind == "subscriptions" {
+		if e := prepareSubscription(q, uid, m); e != nil {
+			return nil, e
+		}
+	}
+	if kind == "traffic" && text(m, "source") == "" {
+		m["source"] = "demo"
+	}
 	m["user_id"] = uid
 	if uid == 0 {
 		delete(m, "user_id")
@@ -223,7 +246,9 @@ func item(q queryer, kind string, id int64) (M, error) {
 		return nil, e
 	}
 	m := M{}
-	e = json.Unmarshal([]byte(raw), &m)
+	d := json.NewDecoder(strings.NewReader(raw))
+	d.UseNumber()
+	e = d.Decode(&m)
 	return m, e
 }
 func list(q queryer, kind string, uid int64) ([]M, error) {
@@ -246,7 +271,9 @@ func list(q queryer, kind string, uid int64) ([]M, error) {
 			return nil, e
 		}
 		m := M{}
-		if e = json.Unmarshal([]byte(raw), &m); e != nil {
+		d := json.NewDecoder(strings.NewReader(raw))
+		d.UseNumber()
+		if e = d.Decode(&m); e != nil {
 			return nil, e
 		}
 		out = append(out, m)
@@ -408,6 +435,9 @@ func (a *App) route(w http.ResponseWriter, r *http.Request) (any, error) {
 	}
 	p := strings.TrimPrefix(r.URL.Path, "/api/")
 	method := r.Method
+	if strings.HasPrefix(p, "node/") {
+		return a.nodeRoute(r, strings.TrimPrefix(p, "node/"))
+	}
 	if p == "health" && method == "GET" {
 		return M{"status": "ok", "demo": a.demo}, nil
 	}
@@ -580,6 +610,18 @@ func (a *App) route(w http.ResponseWriter, r *http.Request) (any, error) {
 					for _, key := range []string{"id", "name", "region", "flag", "protocol", "status", "multiplier", "tags", "active", "sort_order", "updated_at"} {
 						safe[key] = m[key]
 					}
+					if boolean(m, "managed") {
+						safe["managed"] = true
+						_, ready, err := a.managedSubscriptionNode(integer(m, "id"), uid)
+						if err != nil {
+							return nil, err
+						}
+						if ready {
+							safe["status"] = "online"
+						} else {
+							safe["status"] = "not_connected"
+						}
+					}
 					out = append(out, safe)
 				}
 			}
@@ -697,6 +739,9 @@ func (a *App) subscription(q queryer, uid int64) (M, error) {
 		return nil, nil
 	}
 	s := all[0]
+	if e := prepareSubscription(q, uid, s); e != nil {
+		return nil, e
+	}
 	if exp, e := time.Parse(time.RFC3339, text(s, "expires_at")); e == nil && exp.Before(time.Now()) && text(s, "status") == "active" {
 		s["status"] = "expired"
 	}
@@ -771,7 +816,7 @@ func (a *App) pay(u M, id int64) (any, error) {
 			return e
 		}
 		start := time.Now().UTC()
-		if text(o, "period") != "onetime" && s != nil && integer(s, "plan_id") == integer(o, "plan_id") && text(s, "status") == "active" {
+		if text(o, "period") != "onetime" && s != nil && integer(s, "plan_id") == integer(o, "plan_id") && (text(s, "status") == "active" || text(s, "status") == "suspended") {
 			if ex, e := time.Parse(time.RFC3339, text(s, "expires_at")); e == nil && ex.After(start) {
 				start = ex
 			}
@@ -788,7 +833,8 @@ func (a *App) pay(u M, id int64) (any, error) {
 		if s == nil {
 			s = M{}
 		}
-		same := text(o, "period") != "onetime" && integer(s, "plan_id") == integer(o, "plan_id") && text(s, "status") == "active"
+		suspended := text(s, "status") == "suspended"
+		same := text(o, "period") != "onetime" && integer(s, "plan_id") == integer(o, "plan_id") && (text(s, "status") == "active" || suspended)
 		used := float64(0)
 		if same {
 			used = num(s, "traffic_used")
@@ -799,9 +845,17 @@ func (a *App) pay(u M, id int64) (any, error) {
 		s["plan_name"] = text(o, "plan_name")
 		s["traffic_limit"] = num(M(p), "traffic_gb")
 		s["traffic_used"] = used
+		if !same {
+			if e = newTrafficCycle(tx, integer(u, "id"), s); e != nil {
+				return e
+			}
+		}
 		s["device_limit"] = integer(M(p), "device_limit")
 		s["speed_mbps"] = integer(M(p), "speed_mbps")
 		s["status"] = "active"
+		if suspended {
+			s["status"] = "suspended"
+		}
 		s["expires_at"] = expires.Format(time.RFC3339)
 		if text(o, "period") == "onetime" {
 			s["reset_at"] = ""

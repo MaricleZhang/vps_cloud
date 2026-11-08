@@ -4,7 +4,7 @@
 
 - 基础路径 `/api`，JSON 响应 `{ "data": ... }`；失败 `{ "error": "可读错误" }`，正确 HTTP 状态。
 - Cookie 会话，前端 `credentials: 'include'`；所有管理路由要求管理员。
-- 所有金额字段使用整数分。所有日期为 RFC3339 字符串；流量统一 GB 数值（用于展示），原始采集用字节。
+- 所有金额字段使用整数分。所有日期为 RFC3339 字符串；流量使用整数 bytes 计量，兼容 GB 展示字段按 `1 GB = 1024³ bytes`。倍率用 `multiplier_ppm`，余数结转。节点接口与浏览器 Cookie 鉴权相互隔离。
 - `GET /api/health` -> `{status, demo}`。
 - `GET /api/auth/me` -> `User`；`POST /api/auth/login` `{email,password}` -> User；`POST /api/auth/register` `{email,password,name,invite_code?}` -> User；`POST /api/auth/logout`；`POST /api/auth/password` `{current_password,new_password}`。
 - `GET /api/dashboard` -> `{user, subscription: Subscription|null, announcements: Article[], traffic: TrafficRecord[], subscription_url:string}`。
@@ -25,6 +25,10 @@
 - 管理：`GET /api/admin/withdrawals` -> Withdrawal[]；`PATCH /api/admin/withdrawals/{id}` `{status:approved|rejected}`。
 - 管理：`GET /api/admin/commissions` -> Commission[]；`GET /api/admin/traffic` -> TrafficRecord[]；`GET /api/admin/audit` -> Audit[]；`GET /api/admin/ledger` -> Ledger[]。
 - 管理：`GET/PATCH /api/admin/settings` -> `Record<string,string>`；敏感渠道参数不经公共接口返回。
+- 管理：`POST /api/admin/nodes/{id}/agent-token` `{engine:"xray"|"sing-box",port_start,port_end}` -> `{token,node_id}`；token 仅本次返回，重签撤销旧 token。
+- 管理：`GET /api/admin/traffic/enforcement` -> 节点/用户的期望状态、当前策略版本、ACK、最近联络与执行错误；未确认或过期 ACK 的 `applied_enabled` 为 null。
+- 管理：`POST /api/admin/users/{id}/traffic/reset` -> 新周期订阅；保留暂停、封禁与到期状态并写审计。
+- 节点：`GET /api/node/policy`、`POST /api/node/traffic`、`POST /api/node/ack` 均使用独立 `Authorization: Bearer <node-token>`；完整 DTO、累计计数及租约约定见 [TRAFFIC_PROTOCOL.md](TRAFFIC_PROTOCOL.md)。
 
 ## 数据类型
 
@@ -44,4 +48,6 @@ type Audit = {id:number,actor:string,action:string,target:string,created_at:stri
 type Ledger = {id:number,user_id:number,user_email?:string,amount:number,balance_after:number,kind:string,description:string,created_at:string};
 ```
 
-未有真实支付商户与节点环境时，第三方支付、限速执行和外部节点同步必须标为未接入。余额支付可作为本地实际交易闭环。演示账户和模拟业务数据只在显式 demo 模式开启。
+Subscription 增加 `traffic_limit_bytes,traffic_used_bytes,upload_bytes,download_bytes,cycle_id,service_enabled,service_reason`；TrafficRecord 增加 `source:demo|metered,upload_bytes,download_bytes,billed_bytes,multiplier_ppm,cycle_id,session_id,current_cycle`；Node 增加 `managed,agent_engine,port_start,port_end,agent_last_seen`。兼容字段不表示实际设备/限速已执行。
+
+未有真实支付商户与节点环境时，第三方支付、限速执行与生产部署必须标为未接入或未验收。托管节点同步和停服只在实际 Agent 当前 ACK 后确认，非托管节点无强制断开保证。余额支付可作为本地实际交易闭环。演示账户和模拟业务数据只在显式 demo 模式开启。

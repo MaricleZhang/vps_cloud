@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// lifecycle enforces local database state only. It cannot revoke a connected client
-// or meter a real node until a node-side authenticated integration is implemented.
+// lifecycle advances quota periods; managed agents apply resulting policy changes.
 func (a *App) lifecycle(at time.Time) error {
 	return a.transaction(func(tx *sql.Tx) error {
 		orders, e := list(tx, "orders", 0)
@@ -31,21 +30,23 @@ func (a *App) lifecycle(at time.Time) error {
 			return e
 		}
 		for _, s := range subs {
-			if text(s, "status") != "active" {
-				continue
+			changed := text(s, "cycle_id") == ""
+			if e = prepareSubscription(tx, integer(s, "user_id"), s); e != nil {
+				return e
 			}
-			changed := false
 			expires, e := time.Parse(time.RFC3339, text(s, "expires_at"))
-			if e == nil && !expires.After(at) {
+			if e == nil && !expires.After(at) && text(s, "status") == "active" {
 				s["status"] = "expired"
 				changed = true
-			} else if text(s, "kind") != "onetime" {
+			} else if e == nil && expires.After(at) && text(s, "kind") != "onetime" {
 				reset, e := time.Parse(time.RFC3339, text(s, "reset_at"))
 				if e == nil && !reset.After(at) {
 					for !reset.After(at) {
 						reset = reset.AddDate(0, 1, 0)
 					}
-					s["traffic_used"] = 0
+					if e = newTrafficCycle(tx, integer(s, "user_id"), s); e != nil {
+						return e
+					}
 					s["reset_at"] = reset.UTC().Format(time.RFC3339)
 					changed = true
 				}

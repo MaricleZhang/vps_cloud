@@ -11,6 +11,8 @@ backend/bin/
 *.test
 coverage*.out
 *.prof
+__pycache__/
+*.pyc
 
 # Local runtime data, caches and generated artifacts
 .local/

@@ -32,7 +32,7 @@ func (a *App) subscriptionOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, e := a.subscription(a.db, uid)
-	if e != nil || s == nil || text(s, "status") != "active" || num(s, "traffic_used") >= num(s, "traffic_limit") {
+	if e != nil || s == nil || text(s, "status") != "active" || integer(s, "traffic_used_bytes") >= integer(s, "traffic_limit_bytes") {
 		http.Error(w, "subscription inactive or quota exhausted", 403)
 		return
 	}
@@ -45,6 +45,17 @@ func (a *App) subscriptionOutput(w http.ResponseWriter, r *http.Request) {
 	for _, n := range nodes {
 		if !boolean(n, "active") || text(n, "host") == "" || text(n, "status") == "demo" {
 			continue
+		}
+		if boolean(n, "managed") {
+			effective, ok, e := a.managedSubscriptionNode(integer(n, "id"), uid)
+			if e != nil {
+				http.Error(w, "server error", 500)
+				return
+			}
+			if !ok {
+				continue
+			}
+			n = effective
 		}
 		p := M{"name": text(n, "name"), "server": text(n, "host"), "port": integer(n, "port")}
 		switch text(n, "protocol") {
@@ -98,15 +109,15 @@ func (a *App) subscriptionOutput(w http.ResponseWriter, r *http.Request) {
 		proxies = append(proxies, p)
 	}
 	expires, _ := time.Parse(time.RFC3339, text(s, "expires_at"))
-	w.Header().Set("Subscription-Userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", int64(num(s, "traffic_used")*1024*1024*1024), int64(num(s, "traffic_limit")*1024*1024*1024), expires.Unix()))
+	w.Header().Set("Subscription-Userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", integer(s, "traffic_used_bytes"), integer(s, "traffic_limit_bytes"), expires.Unix()))
 	if r.URL.Query().Get("format") == "json" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(M{"demo": a.demo, "integration": "node_sync_not_connected", "subscription": M{"traffic_limit": num(s, "traffic_limit"), "traffic_used": num(s, "traffic_used"), "status": text(s, "status"), "expires_at": text(s, "expires_at")}, "proxies": proxies})
+		json.NewEncoder(w).Encode(M{"demo": a.demo, "integration": "managed_agent_ack_required", "subscription": M{"traffic_limit": num(s, "traffic_limit"), "traffic_used": num(s, "traffic_used"), "status": text(s, "status"), "expires_at": text(s, "expires_at")}, "proxies": proxies})
 		return
 	}
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline; filename=subscription.yaml")
-	fmt.Fprintln(w, "# NiceCloud subscription. Node synchronization and enforcement are not connected.")
+	fmt.Fprintln(w, "# NiceCloud subscription. Managed nodes require current successful agent acknowledgement.")
 	if len(proxies) == 0 {
 		fmt.Fprintln(w, "# No real configured nodes. Demo nodes cannot connect.\nproxies: []\nproxy-groups: []\nrules: []")
 		return

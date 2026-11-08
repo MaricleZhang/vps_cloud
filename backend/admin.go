@@ -13,6 +13,23 @@ func (a *App) admin(r *http.Request, u M, p string) (any, error) {
 	parts := strings.Split(p, "/")
 	kind := parts[0]
 	method := r.Method
+	if p == "traffic/enforcement" && method == "GET" {
+		return a.enforcement()
+	}
+	if len(parts) == 3 && kind == "nodes" && parts[2] == "agent-token" && method == "POST" {
+		id, e := strconv.ParseInt(parts[1], 10, 64)
+		if e != nil || id <= 0 {
+			return nil, bad("节点 ID 无效")
+		}
+		return a.issueNodeToken(r, u, id)
+	}
+	if len(parts) == 4 && kind == "users" && parts[2] == "traffic" && parts[3] == "reset" && method == "POST" {
+		id, e := strconv.ParseInt(parts[1], 10, 64)
+		if e != nil || id <= 0 {
+			return nil, bad("用户 ID 无效")
+		}
+		return a.resetTraffic(u, id)
+	}
 	if p == "stats" && method == "GET" {
 		return a.stats()
 	}
@@ -57,7 +74,20 @@ func (a *App) admin(r *http.Request, u M, p string) (any, error) {
 	}
 	allowed := map[string]bool{"plans": true, "nodes": true, "articles": true, "orders": true, "subscriptions": true, "tickets": true, "withdrawals": true, "commissions": true, "traffic": true, "audit": true, "ledger": true}
 	if len(parts) == 1 && method == "GET" && allowed[kind] {
-		return list(a.db, kind, 0)
+		rows, e := list(a.db, kind, 0)
+		if kind == "subscriptions" {
+			for _, s := range rows {
+				if err := prepareSubscription(a.db, integer(s, "user_id"), s); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if kind == "nodes" {
+			for i, n := range rows {
+				rows[i] = nodeSafe(n)
+			}
+		}
+		return rows, e
 	}
 	if (kind == "plans" || kind == "nodes" || kind == "articles") && (method == "POST" && len(parts) == 1 || method == "PATCH" && len(parts) == 2) {
 		m, e := body(r)
@@ -195,7 +225,7 @@ func (a *App) admin(r *http.Request, u M, p string) (any, error) {
 			}
 			for _, key := range []string{"traffic_limit", "traffic_used"} {
 				if _, ok := m[key]; ok {
-					if num(m, key) < 0 || num(m, key) > 1e12 {
+					if _, e := bytesFromGB(num(m, key)); e != nil || !isNumeric(m[key]) {
 						return bad("流量数值无效")
 					}
 					target[key] = num(m, key)
@@ -274,12 +304,18 @@ func validateEntity(kind string, m M) error {
 				return bad("价格须为非负整数分")
 			}
 		}
+		if _, e := bytesFromGB(num(m, "traffic_gb")); e != nil {
+			return e
+		}
 		for _, k := range []string{"traffic_gb", "device_limit", "speed_mbps"} {
-			if num(m, k) < 0 || num(m, k) > 1e12 {
+			if num(m, k) < 0 || num(m, k) > 1e12 || !isNumeric(m[k]) {
 				return bad("套餐限制无效")
 			}
 		}
 	case "nodes":
+		if !isNumeric(m["multiplier"]) || nodeMultiplier(m) < 1 {
+			return bad("节点倍率至少为 0.000001")
+		}
 		if strings.TrimSpace(text(m, "name")) == "" || num(m, "multiplier") <= 0 || num(m, "multiplier") > 100 || integer(m, "port") < 1 || integer(m, "port") > 65535 {
 			return bad("节点名称、倍率或端口无效")
 		}
