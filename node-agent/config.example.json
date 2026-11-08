@@ -1,0 +1,11 @@
+{
+  "panel": "https://panel.example.com",
+  "engine": "xray",
+  "core": "/usr/local/bin/xray",
+  "state_dir": "/var/lib/nicecloud-node",
+  "bind": "0.0.0.0",
+  "token_file": "/etc/nicecloud-node/node.token",
+  "tls_cert": "/etc/nicecloud-node/tls/fullchain.pem",
+  "tls_key": "/etc/nicecloud-node/tls/privkey.pem",
+  "poll_interval": "1s"
+}

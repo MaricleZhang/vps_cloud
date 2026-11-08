@@ -23,6 +23,7 @@ type Worker struct {
 	stopMu                    sync.Mutex
 	sampleMu                  sync.Mutex
 	readyForTraffic           atomic.Bool
+	stopRequested             atomic.Bool
 	stopFn                    func() error // optional test injection; nil sends the actual process-group signal
 }
 
@@ -40,6 +41,9 @@ func (w *Worker) stopSignal() error {
 	if !w.alive() {
 		return nil
 	}
+	// Mark intent before the signal can interrupt an in-flight StatsService RPC.
+	// Wait may not have observed process exit when that RPC reports EOF/reset.
+	w.stopRequested.Store(true)
 	if w.stopFn != nil {
 		return w.stopFn()
 	}
@@ -140,6 +144,9 @@ func (w *Worker) ready(ctx context.Context, bind string, s *Store) error {
 	defer ticker.Stop()
 	var last error
 	for {
+		if w.stopRequested.Load() {
+			return fmt.Errorf("kernel startup interrupted by a requested stop")
+		}
 		if !w.alive() {
 			return fmt.Errorf("kernel exited during startup; inspect user-%d.log", w.User.ID)
 		}

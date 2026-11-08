@@ -73,6 +73,41 @@ make traffic-smoke XRAY_CORE=/absolute/path/to/xray
 
 接口和安全约定见 [TRAFFIC_PROTOCOL.md](TRAFFIC_PROTOCOL.md)。此项目的协议不兼容 XrayR 原生面板接口。
 
+## 中心端与节点端分别运行
+
+`backend/` 是中心服务器代码，`node-agent/` 是每台节点服务器代码。五台节点共用一个中心地址，各自使用独立 token 和本地状态目录。中心统一累计用户跨节点用量和判断额度，实际代理数据由各节点直接转发。
+
+`make build` 构建两端。中心运行示例：
+
+```sh
+PUBLIC_URL=https://panel.example.com WEB_DIST=web/dist \
+  .local/cloud -listen 127.0.0.1:8080 -db .local/production.db
+```
+
+管理员初始化方式沿用下方配置。每台节点复制 `node-agent/config.example.json`，填写该中心的 HTTPS 地址、本机内核/证书路径和该节点的凭据文件，然后运行：
+
+```sh
+.local/node-agent -config /absolute/path/to/node-config.json
+```
+
+配置文件中的相对路径以配置文件目录为基准；显式 CLI 参数覆盖文件配置。凭据放在 `token_file` 指定的文件，JSON 不接受明文 `token`。完整的一中心、五节点安装步骤、配置样例与 systemd 服务见 [独立部署说明](deploy/README.md)。
+
+分别构建 Linux 发布包（输出至 `.local/releases/`）：
+
+```sh
+make release-center RELEASE_VERSION=0.1.0
+make release-node RELEASE_ARCH=amd64 RELEASE_VERSION=0.1.0
+make release-node RELEASE_ARCH=arm64 RELEASE_VERSION=0.1.0
+```
+
+中心 SQLite CGO 包需要在目标架构 Linux 上构建；节点包支持静态交叉编译。发布包包含对应程序和部署模板，不含真实凭据、证书或代理内核。
+
+真实五节点联调在本机启动一个中心、五个独立 Agent 和两位用户的十个 Xray 实例，检查不同倍率合计、去重、全节点超额断连、用户隔离、单节点停止、中心断线及持久数据恢复：
+
+```sh
+make fleet-smoke XRAY_CORE=/absolute/path/to/xray
+```
+
 ## VPS 自部署
 
 已提供 Docker 多阶段构建、Compose 配置和 Nginx TLS 反向代理示例；是否已实际构建镜像和部署见模块状态。需要 Docker Compose：

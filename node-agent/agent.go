@@ -114,19 +114,34 @@ func (a *Agent) sampler(ctx context.Context, poll time.Duration) {
 				running.Add(1)
 				go func() {
 					defer running.Done()
-					captureCtx, cancel := context.WithTimeout(ctx, 700*time.Millisecond)
-					defer cancel()
-					if err := w.tryCapture(captureCtx, a.Store); err != nil && ctx.Err() == nil {
-						a.setFailure(w, err)
-						if stopErr := w.stop(); stopErr != nil {
-							a.setFailure(w, stopErr)
-						}
-						log.Printf("user %d stopped because metering failed: %v", w.User.ID, err)
-					}
+					a.sampleWorker(ctx, w)
 				}()
 				return true
 			})
 		}
+	}
+}
+func (a *Agent) sampleWorker(ctx context.Context, w *Worker) {
+	captureCtx, cancel := context.WithTimeout(ctx, 700*time.Millisecond)
+	defer cancel()
+	if err := w.tryCapture(captureCtx, a.Store); err != nil && ctx.Err() == nil {
+		// A deliberate stop can reset an RPC before cmd.Wait closes done, and a
+		// fresh policy may already have renewed the lease by the time it returns.
+		// The worker-local intent survives both races. Genuine statistics faults
+		// are still latched before this method requests its own fail-closed stop.
+		// Serialize classification with stopSignal. An older sample must not
+		// publish a late error after apply has already replaced this worker.
+		w.stopMu.Lock()
+		if w.stopRequested.Load() {
+			w.stopMu.Unlock()
+			return
+		}
+		a.setFailure(w, err)
+		w.stopMu.Unlock()
+		if stopErr := w.stop(); stopErr != nil {
+			a.setFailure(w, stopErr)
+		}
+		log.Printf("user %d stopped because metering failed: %v", w.User.ID, err)
 	}
 }
 func (a *Agent) capture(w *Worker) error {
@@ -196,7 +211,7 @@ func (a *Agent) apply(ctx context.Context, p Policy) error {
 		if !a.leased() {
 			continue
 		}
-		if w != nil && w.alive() && reflect.DeepEqual(w.User, u) && reflect.DeepEqual(w.Node, p.Node) {
+		if w != nil && w.alive() && !w.stopRequested.Load() && reflect.DeepEqual(w.User, u) && reflect.DeepEqual(w.Node, p.Node) {
 			continue
 		}
 		if w != nil {
@@ -209,23 +224,31 @@ func (a *Agent) apply(ctx context.Context, p Policy) error {
 			continue
 		}
 		a.status.Delete(u.ID)
+		blockFailure := true
 		newWorker, err := spawnWorker(a.Config, p.Node, u, a.Store)
 		if err == nil {
 			a.workers.Store(u.ID, newWorker)
 			readyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			err = newWorker.ready(readyCtx, a.Config.Bind, a.Store)
 			cancel()
-			if err == nil && !a.leased() {
-				err = fmt.Errorf("policy or traffic reporting lease expired during startup")
+			// Classify before cleanup calls stop(): cleanup itself marks stop
+			// intent, while a watchdog stop is a recoverable lifecycle event.
+			interrupted := newWorker.stopRequested.Load() || !a.leased() || ctx.Err() != nil
+			if err == nil && interrupted {
+				err = fmt.Errorf("kernel startup interrupted by stop or lease expiry")
 			}
 			if err != nil {
+				blockFailure = !interrupted
 				if stopErr := newWorker.stop(); stopErr != nil {
 					err = fmt.Errorf("%v; stopping: %w", err, stopErr)
+					blockFailure = true
 				}
 			}
 		}
 		if err != nil {
-			a.status.Store(u.ID, workerFailure{Version: u.Version, Message: err.Error()})
+			if blockFailure {
+				a.status.Store(u.ID, workerFailure{Version: u.Version, Message: err.Error()})
+			}
 			log.Printf("user %d disabled: %v", u.ID, err)
 		}
 	}
@@ -252,6 +275,9 @@ func (a *Agent) acks() []Ack {
 		}
 		if enabled && running.User.Version != u.Version && message == "" {
 			message = "running kernel still uses an earlier policy"
+		}
+		if enabled && running.stopRequested.Load() && message == "" {
+			message = "kernel stop requested; waiting for actual exit"
 		}
 		if enabled && !a.leased() {
 			message = "policy or traffic reporting lease expired; kernel has not exited"

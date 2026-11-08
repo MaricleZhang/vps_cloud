@@ -55,6 +55,7 @@
 为可靠断开现有连接，不使用“只删除 Xray 用户”的方式。每位用户拥有独立内核进程、端口与认证凭据，Xray/sing-box 仅是该用户实例。超额或暂停时终止该用户进程，进程退出会关闭该用户所有连接；不会为停用单个用户而重启整个共享节点。
 
 - 管理员部署 agent 时明确提供内核路径、节点 token、公开绑定地址、TLS 证书路径（如使用 TLS）。
+- 支持 `node-agent -config /etc/nicecloud-node/config.json` 加载本机运行配置；显式 CLI 参数覆盖文件。节点身份、用户凭据和额度由中心决定，本机配置不能覆盖；节点 token 独立存于 `token_file`。部署模板和中心/节点发布包见 [deploy/README.md](deploy/README.md)。
 - Xray 与 sing-box 通过本机 gRPC StatsService 查询 `user>>>stats_name>>>traffic>>>uplink/downlink` 累计值。sing-box 的单用户 Shadowsocks 入站没有可配置用户名，使用该用户独占入站 `inbound>>>stats_name>>>traffic>>>uplink/downlink`，与用户一一对应；不会混入其他用户。统计端口只监听 loopback。sing-box 必须包含 `with_v2ray_api` 构建标签。
 - agent 持久化出站报告、累计基线与实例周期；API 不可用时保留待发数据。
 - Linux 子进程必须设置 parent-death signal；agent 非正常退出也不允许代理子进程无限运行。

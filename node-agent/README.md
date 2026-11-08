@@ -5,6 +5,7 @@ Agent 将每位用户分配到独立端口与 Xray / sing-box 进程，查询本
 ## 当前验收范围
 
 - 已使用官方 **Xray v26.10.31** 完成本机 VLESS、无 TLS 的真实流量端到端验收：用户独立凭据与端口、整数流量入账、达到额度后关闭已有 TCP、节点停止确认、续费保留已用额度、重置保留暂停、旧周期延迟数据隔离及控制面失联租约停服。
+- 已通过一中心、五个独立 Agent、两用户十个 Xray 实例的真实联调：不同倍率统一扣量、全节点超额断连、其他用户隔离、单节点停机，以及中心/节点重启后的离线补报和自动恢复。此为本机多进程验收。
 - sing-box 配置与 StatsService 适配已实现，需要带 **`with_v2ray_api`** 的构建；尚未完成真实 sing-box 流量验收。
 - TLS、其他协议的真实客户端连接、Linux VPS 部署和 systemd 运维尚未完成现场验收。下面给出部署步骤，不将示例等同于已部署。
 - 设备数量和速度限制尚未执行。轮询计量有检测与同步延迟，窗口内可能超用，取决于速率与节点数量；这不是全局零透支额度租约。
@@ -33,6 +34,18 @@ go test -race ./...
 
 建议将凭据放在仅服务账户可读的文件中，而非命令参数。文件只放一行节点凭据，权限设为 `0600`。也可通过 `NICECLOUD_NODE_TOKEN` 环境变量传入；内核和 Agent 均按同一受限服务账户运行。
 
+节点支持独立 JSON 配置文件，完整样例见 [config.example.json](config.example.json)，部署包中的 systemd 服务使用以下入口：
+
+```sh
+/opt/nicecloud-node/bin/node-agent -config /etc/nicecloud-node/config.json
+```
+
+JSON 字段为 `panel`、`engine`、`core`、`state_dir`、`bind`、`token_file`、`tls_cert`、`tls_key`、`poll_interval`。`poll_interval` 使用 `"1s"` 这样的持续时间字符串；`state_dir` 指向本机持久数据目录。相对的内核、状态、token 和证书路径按配置文件所在目录解析。
+
+优先级为“显式 CLI 参数 > JSON > 默认值”。仍可用 `-panel`、`-core`、`-state` 等旧参数运行或覆盖配置项；CLI 路径保持原语义，`-core` 要求绝对路径。指定 `token_file` 时从文件读取凭据，否则使用 `NICECLOUD_NODE_TOKEN`；显式 `-token-file=` 可清空文件配置并回退到环境变量。JSON 不接受明文 `token` 或未知字段，避免拼写错误被静默忽略。
+
+以下为保留兼容的完整 CLI 运行方式：
+
 ```sh
 /usr/local/bin/nicecloud-node \
   -panel https://panel.example.com \
@@ -51,38 +64,13 @@ go test -race ./...
 
 ## Linux systemd 示例
 
-先建立无登录权限的 `nicecloud-node` 服务账户，将编译好的 Agent 安装为 `/usr/local/bin/nicecloud-node`。创建 `/etc/nicecloud-node` 与 `/var/lib/nicecloud-node`，由服务账户持有，权限为 `0700`；将 `node.token` 设为该账户持有的 `0600` 文件。证书与私钥也必须能被服务账户读取，私钥不要设为全局可读。
+中心和节点现在有独立发布包及可审查的服务文件：[一台中心与五台节点部署](../deploy/README.md)、[节点 systemd 模板](../deploy/node/nicecloud-node.service)、[部署 JSON 样例](../deploy/node/config.example.json)。在项目根目录可单独生成静态 Linux 节点包：
 
-将以下内容保存为 `/etc/systemd/system/nicecloud-node.service`，替换域名和内核路径：
-
-```ini
-[Unit]
-Description=NiceCloud managed proxy node
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=simple
-User=nicecloud-node
-Group=nicecloud-node
-UMask=0077
-StateDirectory=nicecloud-node
-StateDirectoryMode=0700
-ExecStart=/usr/local/bin/nicecloud-node -panel https://panel.example.com -token-file /etc/nicecloud-node/node.token -engine xray -core /usr/local/bin/xray -state /var/lib/nicecloud-node -bind 0.0.0.0 -tls-cert /etc/nicecloud-node/tls/fullchain.pem -tls-key /etc/nicecloud-node/tls/privkey.pem
-Restart=on-failure
-RestartSec=3
-KillMode=control-group
-TimeoutStopSec=8
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/nicecloud-node
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
+```sh
+bash scripts/build-release.sh --component node --arch amd64 --version 0.1.0
 ```
+
+先建立无登录权限的 `nicecloud-node` 服务账户，安装 Agent 到 `/opt/nicecloud-node/bin/node-agent`，将配置保存到 `/etc/nicecloud-node/config.json`。创建私密的 token 文件，并按实际协议安装证书与私钥。所附服务通过 `-config` 启动，systemd 管理 `/var/lib/nicecloud-node` 持久目录。完整安装命令见部署说明；构建脚本不会自动建立账户或安装服务。
 
 ```sh
 sudo systemctl daemon-reload
@@ -98,6 +86,7 @@ Linux 子进程设置独立进程组和 `Pdeathsig=SIGKILL`，Agent 异常退出
 - 内核统计始终读取累计值，禁止清零。每个用户进程与周期使用独立 session；累计样本先落盘再上报，失败保留 outbox，服务端重试去重并用整数倍率余数结转。
 - 周期切换先保存旧进程累计样本，再启动新周期进程；旧周期延迟数据进入历史，不扣新周期额度。每次停止与崩溃存在最后一次采样后的有限计量窗口，应结合实际轮询频率评估。
 - 本地采样不依赖面板请求成功。策略失联、持续计量投递失败或统计采集失败会关闭对应代理，不能依靠反复成功的策略 GET 无限延长未能上报的服务。
+- 中心恢复且待发报告成功补交后，允许使用的实例可以自动重建。主动停服造成的统计连接断开不作为永久采集故障；真正的统计故障仍停用当前策略，排除内核/统计故障后重启 Agent 并检查执行确认。
 - 管理后台“流量统计”区分期望策略、待确认、执行失败和当前成功 ACK。只有进程实际启动/停止成功并确认当前版本才显示执行已确认；失联或过期 ACK 不代表停服已核实。
 - Agent 日志在 systemd journal；各用户内核日志在状态目录的 `user-<id>.log`。统计查询失败时检查内核是否启用了 StatsService、sing-box 是否带 `with_v2ray_api`，以及 loopback 是否可达。TLS 启动失败时检查证书路径和服务账户权限。
 
@@ -107,6 +96,7 @@ Xray v26.10.31 默认 Freedom 会阻断 VLESS 等协议访问私网目标，并�
 
 ```sh
 make traffic-smoke XRAY_CORE=/absolute/path/to/xray
+make fleet-smoke XRAY_CORE=/absolute/path/to/xray
 ```
 
 该脚本使用临时数据库与端口，自动输出内核 SHA-256，并验证真实连接的计量、额度停服与失联断开。VLESS 本机明文验收不代替 TLS、客户端兼容或 VPS 实际部署验收。

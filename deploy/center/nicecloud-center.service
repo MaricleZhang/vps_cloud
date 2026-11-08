@@ -1,0 +1,28 @@
+[Unit]
+Description=NiceCloud control plane
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=nicecloud-center
+Group=nicecloud-center
+UMask=0077
+StateDirectory=nicecloud-center
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/nicecloud-center
+EnvironmentFile=/etc/nicecloud-center/center.env
+ExecStart=/opt/nicecloud-center/bin/cloud -listen 127.0.0.1:8080 -db /var/lib/nicecloud-center/nicecloud.db
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nicecloud-center
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

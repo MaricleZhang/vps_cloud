@@ -127,6 +127,26 @@ def stop(process):
             process.wait(timeout=5)
 
 
+def local_xray_wrapper(directory, core, origin_port):
+    """Permit just the local test destination in temporary Xray configs."""
+    wrapper = directory / "xray-local-smoke"
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "path = sys.argv[sys.argv.index('-config') + 1]\n"
+        "with open(path) as stream: config = json.load(stream)\n"
+        "for outbound in config.get('outbounds', []):\n"
+        "    if outbound.get('protocol') == 'freedom':\n"
+        "        outbound.setdefault('settings', {})['finalRules'] = ["
+        "{'action':'allow','network':'tcp','ip':['127.0.0.1/32'],"
+        f"'port':'{origin_port}'}}]\n"
+        "with open(path, 'w') as stream: json.dump(config, stream)\n"
+        f"os.execv({str(core)!r}, [{str(core)!r}] + sys.argv[1:])\n"
+    )
+    wrapper.chmod(0o700)
+    return wrapper
+
+
 def run(args, directory):
     backend = Path(args.backend).resolve()
     agent = Path(args.agent).resolve()
@@ -147,21 +167,7 @@ def run(args, directory):
     # Xray 26.10.31 blocks private destinations by default. Allow only this
     # temporary echo endpoint in test configs; production configs stay unchanged.
     # See XTLS/Xray-core v26.10.31 infra/conf/freedom.go (finalRules).
-    wrapper = directory / "xray-local-smoke"
-    wrapper.write_text(
-        f"#!{sys.executable}\n"
-        "import json, os, sys\n"
-        "path = sys.argv[sys.argv.index('-config') + 1]\n"
-        "with open(path) as stream: config = json.load(stream)\n"
-        "for outbound in config.get('outbounds', []):\n"
-        "    if outbound.get('protocol') == 'freedom':\n"
-        "        outbound.setdefault('settings', {})['finalRules'] = ["
-        "{'action':'allow','network':'tcp','ip':['127.0.0.1/32'],"
-        f"'port':'{echo.server_address[1]}'}}]\n"
-        "with open(path, 'w') as stream: json.dump(config, stream)\n"
-        f"os.execv({str(core)!r}, [{str(core)!r}] + sys.argv[1:])\n"
-    )
-    wrapper.chmod(0o700)
+    wrapper = local_xray_wrapper(directory, core, echo.server_address[1])
     try:
         with open(directory / "panel.log", "wb") as panel_log, open(directory / "agent.log", "wb") as agent_log:
             panel = subprocess.Popen([str(backend), "-listen", f"127.0.0.1:{panel_port}",
