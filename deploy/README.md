@@ -49,6 +49,8 @@ bash scripts/build-release.sh --component node --arch amd64 --version 0.1.0
 bash scripts/build-release.sh --component node --arch arm64 --version 0.1.0
 ```
 
+参考 `clash.yaml` 的 VLESS Vision/REALITY 与 AnyTLS/ECH 可使用本项目 `proxy-kernel/` 直接依赖公开 sing-box 库构建的内核。两类配置样例分别为 `deploy/node/reality.example.json`、`deploy/node/anytls-ech.example.json`。内核程序需单独构建和安装；发布包包含适配器源码、依赖锁文件和许可文本，不包含内核可执行文件、私钥或原始客户端配置。具体步骤见 [Clash 兼容说明](../CLASH_COMPATIBILITY.md)。
+
 `--component center` 只构建中心；`--arch` 仅支持 `native`、`amd64`、`arm64`。解压后，中心包包含 `bin/cloud`、`web/`、systemd 和环境文件模板；节点包包含 `bin/node-agent`、systemd、JSON 配置模板与流量协议。发布包没有真实管理员密码、节点 token、证书或代理内核。
 
 ## 部署中心
@@ -137,4 +139,4 @@ sudo systemctl restart nicecloud-node
 
 升级时先停止相应服务，替换 `/opt/...` 下的程序和中心静态资源，再启动并核对健康与执行状态。保留 `/etc/...` 配置和 `/var/lib/...` 数据。不要通过清空节点状态目录解决重试问题。中心 SQLite 备份使用在线备份 API/工具，或停止服务后复制数据库和必要的伴随文件；只复制运行中的主数据库文件不能保证完整恢复。
 
-既有共享 XrayR/其他面板进程必须迁移成此 Agent 的托管用户实例，才能获得强制断开能力。现有代码已完成本机一中心、五个独立 Agent、两用户十个真实 Xray VLESS 实例的计量、停服、用户隔离和失联恢复验收；公网 TLS、sing-box 真流量、VPS/systemd 现场部署以及设备/限速执行仍需分别验收。在源码目录运行 `make fleet-smoke XRAY_CORE=/absolute/path/to/xray` 可复验。
+既有共享 XrayR/其他面板进程必须迁移成此 Agent 的托管用户实例，才能获得强制断开能力。已完成本机五节点 Xray 的计量/隔离/失联恢复，以及 sing-box 与真实 Mihomo 的 VLESS Vision/REALITY、AnyTLS/ECH、UDP 和超额断连验收。公网正式证书、VPS/systemd 现场部署、其他客户端以及设备/限速执行仍需验收；复验命令见项目根目录 `make fleet-smoke` 与 `make protocol-smoke`。

@@ -1,0 +1,10 @@
+{
+  "panel": "https://panel.example.com",
+  "engine": "sing-box",
+  "core": "/usr/local/bin/nicecloud-kernel",
+  "state_dir": "/var/lib/nicecloud-node/reality",
+  "bind": "0.0.0.0",
+  "token_file": "/etc/nicecloud-node/reality.token",
+  "reality_private_key_file": "/etc/nicecloud-node/keys/reality.key",
+  "poll_interval": "1s"
+}

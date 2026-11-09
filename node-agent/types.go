@@ -8,15 +8,27 @@ import (
 )
 
 type Node struct {
-	ID            int64  `json:"id"`
-	Protocol      string `json:"protocol"`
-	TLS           bool   `json:"tls"`
-	ServerName    string `json:"server_name"`
-	Engine        string `json:"agent_engine"`
-	Cipher        string `json:"cipher"`
-	PortStart     int    `json:"port_start"`
-	PortEnd       int    `json:"port_end"`
-	MultiplierPPM int64  `json:"multiplier_ppm"`
+	ID                     int64  `json:"id"`
+	Protocol               string `json:"protocol"`
+	TLS                    bool   `json:"tls"`
+	ServerName             string `json:"server_name"`
+	Engine                 string `json:"agent_engine"`
+	Cipher                 string `json:"cipher"`
+	PortStart              int    `json:"port_start"`
+	PortEnd                int    `json:"port_end"`
+	MultiplierPPM          int64  `json:"multiplier_ppm"`
+	Network                string `json:"network"`
+	Flow                   string `json:"flow"`
+	TLSMode                string `json:"tls_mode"`
+	ClientFingerprint      string `json:"client_fingerprint"`
+	UDP                    bool   `json:"udp"`
+	RealityPublicKey       string `json:"reality_public_key"`
+	RealityShortID         string `json:"reality_short_id"`
+	RealityHandshakeServer string `json:"reality_handshake_server"`
+	RealityHandshakePort   int    `json:"reality_handshake_port"`
+	ECHEnabled             bool   `json:"ech_enabled"`
+	ECHConfig              string `json:"ech_config"`
+	ECHQueryServerName     string `json:"ech_query_server_name"`
 }
 type User struct {
 	ID        int64  `json:"user_id"`

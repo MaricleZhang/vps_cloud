@@ -94,6 +94,11 @@ func (a *App) admin(r *http.Request, u M, p string) (any, error) {
 		if e != nil {
 			return nil, e
 		}
+		if kind == "nodes" {
+			if e := rejectNodePrivateKeys(m); e != nil {
+				return nil, e
+			}
+		}
 		var out M
 		e = a.transaction(func(tx *sql.Tx) error {
 			base := defaultsFor(kind)
@@ -115,6 +120,15 @@ func (a *App) admin(r *http.Request, u M, p string) (any, error) {
 					base[k] = v
 				}
 			}
+			if kind == "nodes" {
+				// Legacy clients only send the TLS checkbox. Preserve that API
+				// for ordinary nodes while explicit REALITY remains deliberate.
+				if _, modeProvided := m["tls_mode"]; !modeProvided {
+					if _, tlsProvided := m["tls"]; tlsProvided && text(base, "tls_mode") != "reality" {
+						base["tls_mode"] = ""
+					}
+				}
+			}
 			if e := validateEntity(kind, base); e != nil {
 				return e
 			}
@@ -127,6 +141,9 @@ func (a *App) admin(r *http.Request, u M, p string) (any, error) {
 			}
 			return audit(tx, u, kind+"."+action, fmt.Sprint(out["id"]))
 		})
+		if kind == "nodes" && out != nil {
+			out = nodeSafe(out)
+		}
 		return out, e
 	}
 	if len(parts) != 2 || method != "PATCH" {
@@ -272,7 +289,7 @@ func defaultsFor(kind string) M {
 	case "plans":
 		return M{"name": "", "description": "", "traffic_gb": 0, "device_limit": 1, "speed_mbps": 100, "monthly_price": 0, "quarterly_price": 0, "yearly_price": 0, "onetime_price": 0, "kind": "recurring", "recommended": false, "active": true, "sort_order": 0}
 	case "nodes":
-		return M{"name": "", "region": "", "flag": "🌐", "protocol": "shadowsocks", "status": "not_connected", "multiplier": 1, "tags": "", "host": "", "port": 443, "tls": true, "server_name": "", "active": true, "sort_order": 0, "updated_at": now()}
+		return M{"name": "", "region": "", "flag": "🌐", "protocol": "shadowsocks", "status": "not_connected", "multiplier": 1, "tags": "", "host": "", "port": 443, "tls": true, "server_name": "", "active": true, "sort_order": 0, "updated_at": now(), "network": "tcp", "tls_mode": "", "flow": "", "client_fingerprint": "chrome", "udp": true, "reality_public_key": "", "reality_short_id": "", "reality_handshake_server": "", "reality_handshake_port": 443, "ech_enabled": false, "ech_config": "", "ech_query_server_name": ""}
 	case "articles":
 		return M{"title": "", "category": "帮助中心", "kind": "doc", "body": "", "published": false, "updated_at": now()}
 	}
@@ -321,6 +338,12 @@ func validateEntity(kind string, m M) error {
 		}
 		if text(m, "host") != "" && (strings.ContainsAny(text(m, "host"), "\n\r\t /")) {
 			return bad("节点地址无效")
+		}
+		if e := normalizeNodeProtocol(m); e != nil {
+			return e
+		}
+		if boolean(m, "managed") {
+			return validateNodeEngine(m, text(m, "agent_engine"))
 		}
 	case "articles":
 		if strings.TrimSpace(text(m, "title")) == "" || len(text(m, "title")) > 200 || len(text(m, "body")) > 200000 {

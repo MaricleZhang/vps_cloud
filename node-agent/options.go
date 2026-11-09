@@ -23,16 +23,18 @@ type runtimeOptions struct {
 }
 
 type fileOptions struct {
-	Panel        *string         `json:"panel"`
-	Engine       *string         `json:"engine"`
-	Core         *string         `json:"core"`
-	StateDir     *string         `json:"state_dir"`
-	Bind         *string         `json:"bind"`
-	TokenFile    *string         `json:"token_file"`
-	TLSCert      *string         `json:"tls_cert"`
-	TLSKey       *string         `json:"tls_key"`
-	PollInterval *string         `json:"poll_interval"`
-	Token        json.RawMessage `json:"token"`
+	Panel                 *string         `json:"panel"`
+	Engine                *string         `json:"engine"`
+	Core                  *string         `json:"core"`
+	StateDir              *string         `json:"state_dir"`
+	Bind                  *string         `json:"bind"`
+	TokenFile             *string         `json:"token_file"`
+	TLSCert               *string         `json:"tls_cert"`
+	TLSKey                *string         `json:"tls_key"`
+	RealityPrivateKeyFile *string         `json:"reality_private_key_file"`
+	ECHKeyFile            *string         `json:"ech_key_file"`
+	PollInterval          *string         `json:"poll_interval"`
+	Token                 json.RawMessage `json:"token"`
 }
 
 func defaultRuntimeOptions() runtimeOptions {
@@ -59,6 +61,8 @@ func parseRuntimeOptions(args []string, output io.Writer) (runtimeOptions, error
 	fs.StringVar(&cli.Config.Bind, "bind", cli.Config.Bind, "public proxy bind IP")
 	fs.StringVar(&cli.Config.TLSCert, "tls-cert", "", "TLS certificate PEM path (when TLS enabled)")
 	fs.StringVar(&cli.Config.TLSKey, "tls-key", "", "TLS private key PEM path (when TLS enabled)")
+	fs.StringVar(&cli.Config.RealityPrivateKeyFile, "reality-private-key-file", "", "local REALITY X25519 private key file")
+	fs.StringVar(&cli.Config.ECHKeyFile, "ech-key-file", "", "local sing-box ECH KEYS PEM file")
 	fs.DurationVar(&cli.PollInterval, "poll", cli.PollInterval, "policy and metering interval (100ms to 5s)")
 	if err := fs.Parse(args); err != nil {
 		return runtimeOptions{}, err
@@ -92,6 +96,10 @@ func parseRuntimeOptions(args []string, output io.Writer) (runtimeOptions, error
 			options.Config.TLSCert = cli.Config.TLSCert
 		case "tls-key":
 			options.Config.TLSKey = cli.Config.TLSKey
+		case "reality-private-key-file":
+			options.Config.RealityPrivateKeyFile = cli.Config.RealityPrivateKeyFile
+		case "ech-key-file":
+			options.Config.ECHKeyFile = cli.Config.ECHKeyFile
 		case "poll":
 			options.PollInterval = cli.PollInterval
 		}
@@ -147,6 +155,8 @@ func (options *runtimeOptions) loadFile(path string, cliPoll bool) error {
 	set(&options.TokenFile, file.TokenFile, true)
 	set(&options.Config.TLSCert, file.TLSCert, true)
 	set(&options.Config.TLSKey, file.TLSKey, true)
+	set(&options.Config.RealityPrivateKeyFile, file.RealityPrivateKeyFile, true)
+	set(&options.Config.ECHKeyFile, file.ECHKeyFile, true)
 	if file.PollInterval != nil && !cliPoll {
 		poll, err := time.ParseDuration(*file.PollInterval)
 		if err != nil {

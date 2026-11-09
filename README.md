@@ -47,7 +47,7 @@ make test
 make build
 ```
 
-构建产物为 `web/dist/`、`.local/cloud` 和 `.local/node-agent`。从项目根目录运行 Go 服务时需配置静态目录：
+构建产物为 `web/dist/`、`.local/cloud`、`.local/node-agent` 和 `.local/nicecloud-kernel`。从项目根目录运行 Go 服务时需配置静态目录：
 
 ```bash
 WEB_DIST=web/dist .local/cloud -listen 127.0.0.1:8080 -db .local/production.db
@@ -72,6 +72,18 @@ make traffic-smoke XRAY_CORE=/absolute/path/to/xray
 ```
 
 接口和安全约定见 [TRAFFIC_PROTOCOL.md](TRAFFIC_PROTOCOL.md)。此项目的协议不兼容 XrayR 原生面板接口。
+
+## Clash 参考配置对应的服务端
+
+已按根目录 `clash.yaml` 的协议类型补齐 VLESS TCP + Vision + REALITY、AnyTLS + TLS ECH。服务端内核位于 `proxy-kernel/`，直接依赖公开的 `SagerNet/sing-box v1.12.12`；`make build` 同时构建 `.local/nicecloud-kernel`，包含 REALITY 与计量需要的构建功能。
+
+节点 `engine` 设为 `sing-box`，`core` 指向该程序。服务端私钥仅在节点本地生成和保存，中心维护对应公共参数并生成个人订阅。原客户端文件的公钥无法还原旧服务器私钥，原文件保留。
+
+参数映射、密钥生成、节点配置与真实 Mihomo 测试见 [Clash 协议兼容说明](CLASH_COMPATIBILITY.md)。可复验：
+
+```sh
+make protocol-smoke MIHOMO_CORE=/absolute/path/to/mihomo
+```
 
 ## 中心端与节点端分别运行
 

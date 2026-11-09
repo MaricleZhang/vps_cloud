@@ -56,6 +56,7 @@
 
 - 管理员部署 agent 时明确提供内核路径、节点 token、公开绑定地址、TLS 证书路径（如使用 TLS）。
 - 支持 `node-agent -config /etc/nicecloud-node/config.json` 加载本机运行配置；显式 CLI 参数覆盖文件。节点身份、用户凭据和额度由中心决定，本机配置不能覆盖；节点 token 独立存于 `token_file`。部署模板和中心/节点发布包见 [deploy/README.md](deploy/README.md)。
+- 参考 Clash 的 VLESS Vision/REALITY 与 AnyTLS/ECH 由 `proxy-kernel/` 直接依赖 sing-box 处理。policy 只包含网络、flow、TLS 模式、REALITY 公钥/short ID/握手目标、ECH 公共配置和客户端指纹等 public 参数；REALITY 与 ECH 私钥分别由本机 `reality_private_key_file`、`ech_key_file` 提供，并验证与 policy 匹配。中心拒绝私钥输入，公共节点列表不暴露这些连接参数。
 - Xray 与 sing-box 通过本机 gRPC StatsService 查询 `user>>>stats_name>>>traffic>>>uplink/downlink` 累计值。sing-box 的单用户 Shadowsocks 入站没有可配置用户名，使用该用户独占入站 `inbound>>>stats_name>>>traffic>>>uplink/downlink`，与用户一一对应；不会混入其他用户。统计端口只监听 loopback。sing-box 必须包含 `with_v2ray_api` 构建标签。
 - agent 持久化出站报告、累计基线与实例周期；API 不可用时保留待发数据。
 - Linux 子进程必须设置 parent-death signal；agent 非正常退出也不允许代理子进程无限运行。

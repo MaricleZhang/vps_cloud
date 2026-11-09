@@ -50,7 +50,7 @@ go run . -db ../.local/production.db
 - 待支付订单 30 分钟后关闭。周期流量按订阅 `reset_at` 的月份推进并产生新 `cycle_id`；到期订阅变为 expired。生命周期处理在 API/订阅请求前以及后台每分钟执行，并影响下一次节点策略。人工暂停和账户封禁不会因流量重置而解除。
 - 节点使用独立 Bearer token，数据库仅存摘要。累计计数按节点/用户/周期/session 去重，整数 bytes × multiplier_ppm 计费并结转余数，事务内入账。非法、负数、小数、溢出和未授权周期拒绝；旧周期延迟上报只记历史。
 - 每位托管用户独立凭据、端口和内核进程；达到或超过额度即下发禁用策略。后台区分期望状态和当前版本 ACK 的执行状态，失联不标记执行成功。部署与强制断开由 [node-agent](../node-agent/README.md) 实施，接口见 [TRAFFIC_PROTOCOL.md](../TRAFFIC_PROTOCOL.md)。
-- 订阅默认输出 Clash/Mihomo YAML，支持配置了必要凭据的 VLESS、AnyTLS、Shadowsocks、Trojan、VMess 节点；`?format=json` 可查看不含用户身份字段的配置。演示节点不会输出真实代理。不同客户端版本的真实连接尚未验证。
+- 订阅默认输出 Clash/Mihomo YAML，支持配置了必要凭据的 VLESS、AnyTLS、Shadowsocks、Trojan、VMess 节点；`?format=json` 可查看不含用户身份字段的配置。VLESS Vision/REALITY、AnyTLS/ECH 的 public 参数随个人订阅下发，服务端私钥只在节点本地；普通节点列表继续隐藏连接凭据。已用本项目 sing-box 内核与 Mihomo v1.19.33 验证这两类协议，其他客户端/协议矩阵和公网部署仍需验收。
 - `Subscription-Userinfo` 使用计费口径 `upload=0; download=traffic_used_bytes; total=traffic_limit_bytes`，避免高倍率节点令客户端误显示剩余额度；原始上传/下载 bytes 保留在业务 API 和流量明细中。
 - 邀请佣金比例 `invite_rate` 为 0–1；本地余额订单支付成功后记为可用佣金。提现申请立即冻结额度，并发请求不能超额申请；批准/拒绝为人工审核记录，没有对外打款。`invites.pending` 表示处理中提现冻结金额。
 - 工单关闭后不能继续回复。管理员回复后状态为 answered。

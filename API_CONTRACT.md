@@ -50,4 +50,6 @@ type Ledger = {id:number,user_id:number,user_email?:string,amount:number,balance
 
 Subscription 增加 `traffic_limit_bytes,traffic_used_bytes,upload_bytes,download_bytes,cycle_id,service_enabled,service_reason`；TrafficRecord 增加 `source:demo|metered,upload_bytes,download_bytes,billed_bytes,multiplier_ppm,cycle_id,session_id,current_cycle`；Node 增加 `managed,agent_engine,port_start,port_end,agent_last_seen`。兼容字段不表示实际设备/限速已执行。
 
+Node 的协议公共参数增加 `network:"tcp"`、`tls_mode:"none"|"tls"|"reality"`、`flow`、`udp`、`client_fingerprint`、`reality_public_key`、`reality_short_id`、`reality_handshake_server`、`reality_handshake_port`、`ech_enabled`、`ech_config`、`ech_query_server_name`。旧 `tls` 布尔接口继续兼容；REALITY/ECH 的私钥只保存在节点本地，管理 API 拒绝提交私钥字段，不会写入或下发。个人订阅按上述参数生成对应 `reality-opts` / `ech-opts`，普通用户 `/nodes` 仍只返回展示白名单。映射和本地密钥文件说明见 [CLASH_COMPATIBILITY.md](CLASH_COMPATIBILITY.md)。
+
 未有真实支付商户与节点环境时，第三方支付、限速执行与生产部署必须标为未接入或未验收。托管节点同步和停服只在实际 Agent 当前 ACK 后确认，非托管节点无强制断开保证。余额支付可作为本地实际交易闭环。演示账户和模拟业务数据只在显式 demo 模式开启。

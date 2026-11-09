@@ -1,0 +1,12 @@
+{
+  "panel": "https://panel.example.com",
+  "engine": "sing-box",
+  "core": "/usr/local/bin/nicecloud-kernel",
+  "state_dir": "/var/lib/nicecloud-node/anytls",
+  "bind": "0.0.0.0",
+  "token_file": "/etc/nicecloud-node/anytls.token",
+  "tls_cert": "/etc/nicecloud-node/tls/fullchain.pem",
+  "tls_key": "/etc/nicecloud-node/tls/privkey.pem",
+  "ech_key_file": "/etc/nicecloud-node/keys/ech.pem",
+  "poll_interval": "1s"
+}

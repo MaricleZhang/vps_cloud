@@ -71,22 +71,30 @@ package_component() {
   local role="$1"
   local archive_name="nicecloud-${role}-${release_version}-linux-${target_arch}"
   local package_dir="$staging_dir/$archive_name"
-  mkdir -p "$package_dir/bin" "$package_dir/deploy/center" "$package_dir/deploy/node" "$package_dir/node-agent"
+  mkdir -p "$package_dir/bin" "$package_dir/deploy/center" "$package_dir/deploy/node" "$package_dir/node-agent" "$package_dir/proxy-kernel"
   cp "$project_root/deploy/README.md" "$package_dir/deploy/README.md"
   cp "$project_root/node-agent/README.md" "$package_dir/node-agent/README.md"
   cp "$project_root/node-agent/config.example.json" "$package_dir/node-agent/config.example.json"
   cp "$project_root/TRAFFIC_PROTOCOL.md" "$package_dir/TRAFFIC_PROTOCOL.md"
+  cp "$project_root/CLASH_COMPATIBILITY.md" "$package_dir/CLASH_COMPATIBILITY.md"
+  # Public adapter source and license metadata only: never copy runtime keys,
+  # local build artifacts or the user's reference clash.yaml into releases.
+  cp "$project_root/proxy-kernel/"*.go "$package_dir/proxy-kernel/"
+  for source in go.mod go.sum README.md NOTICE.md LICENSE UPSTREAM-LICENSE COPYING; do
+    cp "$project_root/proxy-kernel/$source" "$package_dir/proxy-kernel/"
+  done
   cat > "$package_dir/README.md" <<DOC
 # NiceCloud $role $release_version (Linux $target_arch)
 
 This archive contains the $role service and deployment templates.
 See [the deployment guide](deploy/README.md) for reviewed installation steps.
 The control plane and node agent are distributed in separate archives.
-No proxy kernel, real token, administrator password, or certificate is included.
+No proxy-kernel executable, real token, administrator password, or certificate is included.
+The proxy-kernel adapter source and license metadata are in proxy-kernel/.
 Build commands in the guide are run from the source repository.
 DOC
   cp "$project_root/deploy/center/nicecloud-center.service" "$project_root/deploy/center/center.env.example" "$package_dir/deploy/center/"
-  cp "$project_root/deploy/node/nicecloud-node.service" "$project_root/deploy/node/config.example.json" "$package_dir/deploy/node/"
+  cp "$project_root/deploy/node/nicecloud-node.service" "$project_root/deploy/node/config.example.json" "$project_root/deploy/node/reality.example.json" "$project_root/deploy/node/anytls-ech.example.json" "$package_dir/deploy/node/"
   cp "$project_root/deploy/nginx.conf.example" "$package_dir/deploy/nginx.conf.example"
   if [ "$role" = center ]; then
     if [ ! -d "$project_root/web/node_modules" ]; then npm --prefix "$project_root/web" ci; fi

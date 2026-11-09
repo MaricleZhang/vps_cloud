@@ -133,8 +133,12 @@ func uuidToken() string {
 func nodeMultiplier(n M) int64 { return int64(math.Round(num(n, "multiplier") * 1e6)) }
 func nodeSafe(n M) M {
 	out := M{}
+	allowed := fieldsFor("nodes")
+	for _, key := range []string{"id", "managed", "agent_engine", "port_start", "port_end", "agent_last_seen"} {
+		allowed[key] = true
+	}
 	for k, v := range n {
-		if k != "agent_token" && k != "token_hash" && k != "secret" {
+		if allowed[k] && k != "secret" {
 			out[k] = v
 		}
 	}
@@ -163,10 +167,11 @@ func (a *App) issueNodeToken(r *http.Request, actor M, id int64) (any, error) {
 		if e != nil {
 			return e
 		}
-		protocol := text(n, "protocol")
-		supported := protocol == "vless" || protocol == "trojan" || protocol == "ss" || protocol == "shadowsocks" || engine == "xray" && protocol == "vmess" || engine == "sing-box" && protocol == "anytls"
-		if !supported {
-			return bad("所选内核不支持该节点协议")
+		if e := normalizeNodeProtocol(n); e != nil {
+			return e
+		}
+		if e := validateNodeEngine(n, engine); e != nil {
+			return e
 		}
 		var outside int
 		if e = tx.QueryRow("SELECT count(*) FROM node_bindings WHERE node_id=? AND (port<? OR port>?)", id, start, end).Scan(&outside); e != nil {
@@ -222,9 +227,16 @@ func (a *App) policy(q queryer, id int64) (M, error) {
 	if e != nil {
 		return nil, e
 	}
+	n, e = normalizedNodeProtocol(n)
+	if e != nil {
+		return nil, e
+	}
 	node := M{}
 	for _, k := range []string{"id", "name", "protocol", "tls", "server_name", "port_start", "port_end", "agent_engine", "cipher", "host", "active"} {
 		node[k] = n[k]
+	}
+	for _, key := range nodeProtocolFields {
+		node[key] = n[key]
 	}
 	node["multiplier_ppm"] = nodeMultiplier(n)
 	users, e := listUsers(q)

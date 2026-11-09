@@ -57,56 +57,14 @@ func (a *App) subscriptionOutput(w http.ResponseWriter, r *http.Request) {
 			}
 			n = effective
 		}
-		p := M{"name": text(n, "name"), "server": text(n, "host"), "port": integer(n, "port")}
-		switch text(n, "protocol") {
-		case "shadowsocks", "ss":
-			if text(n, "password") == "" {
-				continue
-			}
-			p["type"] = "ss"
-			p["cipher"] = text(n, "cipher")
-			if p["cipher"] == "" {
-				p["cipher"] = "aes-128-gcm"
-			}
-			p["password"] = text(n, "password")
-		case "trojan":
-			if text(n, "password") == "" {
-				continue
-			}
-			p["type"] = "trojan"
-			p["password"] = text(n, "password")
-			p["sni"] = text(n, "server_name")
-		case "vless":
-			if text(n, "uuid") == "" {
-				continue
-			}
-			p["type"] = "vless"
-			p["uuid"] = text(n, "uuid")
-			p["tls"] = boolean(n, "tls")
-			p["servername"] = text(n, "server_name")
-			p["network"] = "tcp"
-		case "anytls":
-			if text(n, "password") == "" {
-				continue
-			}
-			p["type"] = "anytls"
-			p["password"] = text(n, "password")
-			p["sni"] = text(n, "server_name")
-			p["client-fingerprint"] = "chrome"
-		case "vmess":
-			if text(n, "uuid") == "" {
-				continue
-			}
-			p["type"] = "vmess"
-			p["uuid"] = text(n, "uuid")
-			p["alterId"] = 0
-			p["cipher"] = "auto"
-			p["tls"] = boolean(n, "tls")
-			p["servername"] = text(n, "server_name")
-		default:
-			continue
+		p, available, e := clashProxy(n)
+		if e != nil {
+			http.Error(w, "node transport configuration invalid", 500)
+			return
 		}
-		proxies = append(proxies, p)
+		if available {
+			proxies = append(proxies, p)
+		}
 	}
 	expires, _ := time.Parse(time.RFC3339, text(s, "expires_at"))
 	w.Header().Set("Subscription-Userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", integer(s, "traffic_used_bytes"), integer(s, "traffic_limit_bytes"), expires.Unix()))

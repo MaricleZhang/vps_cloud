@@ -6,8 +6,8 @@ Agent 将每位用户分配到独立端口与 Xray / sing-box 进程，查询本
 
 - 已使用官方 **Xray v26.10.31** 完成本机 VLESS、无 TLS 的真实流量端到端验收：用户独立凭据与端口、整数流量入账、达到额度后关闭已有 TCP、节点停止确认、续费保留已用额度、重置保留暂停、旧周期延迟数据隔离及控制面失联租约停服。
 - 已通过一中心、五个独立 Agent、两用户十个 Xray 实例的真实联调：不同倍率统一扣量、全节点超额断连、其他用户隔离、单节点停机，以及中心/节点重启后的离线补报和自动恢复。此为本机多进程验收。
-- sing-box 配置与 StatsService 适配已实现，需要带 **`with_v2ray_api`** 的构建；尚未完成真实 sing-box 流量验收。
-- TLS、其他协议的真实客户端连接、Linux VPS 部署和 systemd 运维尚未完成现场验收。下面给出部署步骤，不将示例等同于已部署。
+- 已通过本项目直接依赖 sing-box v1.12.12 的内核与真实 Mihomo v1.19.33 的 VLESS Vision/REALITY、AnyTLS/ECH 互通、UDP、计量与超额断连测试。`make build` 的 `nicecloud-kernel` 已包含所需统计功能。
+- 公网 TLS、其他协议/客户端版本、Linux VPS 部署和 systemd 运维尚未完成现场验收。下面给出部署步骤，不将示例等同于已部署。
 - 设备数量和速度限制尚未执行。轮询计量有检测与同步延迟，窗口内可能超用，取决于速率与节点数量；这不是全局零透支额度租约。
 
 ## 构建与节点准备
@@ -20,11 +20,11 @@ go test ./...
 go test -race ./...
 ```
 
-代理内核需另行安装。Xray 可使用[官方发布](https://github.com/XTLS/Xray-core/releases)；sing-box 的 [V2Ray API](https://sing-box.sagernet.org/configuration/experimental/v2ray-api/) 需要相应构建功能。请保留所用二进制的版本与 SHA-256，升级后重跑连接和计量验证。
+参考 `clash.yaml` 的协议可使用本项目 `proxy-kernel/` 直接依赖公开库构建的 `nicecloud-kernel`，设置 `engine: sing-box`、`core` 为其绝对路径。完整映射和密钥说明见 [Clash 兼容说明](../CLASH_COMPATIBILITY.md)。也可另行安装 Xray 或自备带统计功能的 sing-box；保留二进制版本和 SHA-256，升级后重跑连接与计量验证。
 
 在管理后台新增节点，填写客户端实际访问的公开地址、协议、TLS/SNI 与流量倍率，然后选择“接入 Agent”，配置内核和用户端口范围并签发独立节点凭据。端口范围必须在 1024–65535 内；一个用户占用一个稳定端口，已分配的端口不能在重新签发时移出范围。根据所用协议开放相应 TCP/UDP 端口，统计 API 只监听 loopback，不能暴露公网。
 
-当前托管协议组合：Xray 支持 VLESS、VMess、Trojan、Shadowsocks；sing-box 支持 VLESS、Trojan、AnyTLS、Shadowsocks。托管 Shadowsocks 使用传统 AEAD 密码，不支持 SS2022。Trojan、AnyTLS 以及节点启用 TLS 时，需要有效证书与私钥，Agent 不负责申请证书。
+当前托管协议组合：Xray 支持 VLESS、VMess、Trojan、Shadowsocks；sing-box 支持 VLESS、Trojan、AnyTLS、Shadowsocks。VLESS 可使用 Vision/REALITY，AnyTLS 可使用 ECH。托管 Shadowsocks 使用传统 AEAD 密码，不支持 SS2022。`tls_mode: tls`（包括 Trojan、AnyTLS）需要证书与私钥；REALITY 使用本地 X25519 私钥而无需本机证书。Agent 不负责申请证书。
 
 节点凭据只在签发响应中显示，控制面只保存摘要。重新签发会撤销旧凭据；更新节点上的凭据并重启 Agent，等待新的执行确认。
 
@@ -59,6 +59,8 @@ JSON 字段为 `panel`、`engine`、`core`、`state_dir`、`bind`、`token_file`
 ```
 
 使用 sing-box 时改为 `-engine sing-box -core /usr/local/bin/sing-box`。无 TLS 的本机 VLESS 测试可以省略两个证书参数。`-bind` 必须是 IP 地址；默认 `0.0.0.0`，本机测试使用 `127.0.0.1`。`-poll` 默认 `1s`，允许 `100ms` 至 `5s`。
+
+REALITY 的本机私钥路径使用 `reality_private_key_file`（CLI `-reality-private-key-file`），ECH 使用 `ech_key_file`（CLI `-ech-key-file`）。私钥文件须为仅属主可读的 `0600` 或 `0400`；节点会验证其与中心公钥/公共 ECH 配置匹配，错误消息不打印私钥。
 
 状态目录保存用户凭据配置、累计样本、待发 outbox 与日志，权限为 `0700`，文件为 `0600`。请将它放在持久磁盘，按敏感数据备份，不要加入 Git 或放进公开静态目录。目录锁阻止同一状态目录同时运行两个 Agent；目录还绑定节点 ID，不能换给另一节点复用。重启时保留该目录，不能通过删除状态来“清理流量”。
 
